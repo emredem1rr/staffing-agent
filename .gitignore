@@ -1,0 +1,43 @@
+# Ortam değişkenleri — asla GitHub'a gitmesin
+.env
+
+# Veritabanı
+*.db
+*.sqlite
+*.sqlite3
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+
+# Sanal ortam
+venv/
+.venv/
+env/
+
+# Sunum ve yerel notlar
+start.txt
+sunum.txt
+
+# Ngrok
+ngrok.exe
+ngrok
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Claude Code ayarları
+.claude/
+
+# OS
+.DS_Store
+Thumbs.db
