@@ -7,8 +7,8 @@ def seed():
     db.init_db()
 
     staff_data = [
-        {"name": "Emre Demir",          "phone": "+905418169545", "roles": ["garson","komi"],        "email": "demire773@gmail.com",  "location": "Maslak"},
-        {"name": "Muhammet Ali Gödek",   "phone": "+905369413712", "roles": ["barmen"],               "email": "mgodek288@gmail.com",  "location": "Bomonti"},
+        {"name": "Emre Demir",          "phone": "+905551000001", "roles": ["garson","komi"],        "email": "emre.demir@example.com",     "location": "Maslak"},
+        {"name": "Muhammet Ali Gödek",   "phone": "+905551000002", "roles": ["barmen"],               "email": "mali.godek@example.com",     "location": "Bomonti"},
         {"name": "Mehmet Kaya",          "phone": "+905551000003", "roles": ["garson","barmen"],      "email": "mehmet@test.com",      "location": "Levent"},
         {"name": "Ayşe Çelik",          "phone": "+905551000004", "roles": ["garson","host/hostes"],  "email": "ayse@test.com",        "location": "Şişli"},
         {"name": "Burak Özkan",          "phone": "+905551000005", "roles": ["garson"],               "email": "burak@test.com",       "location": "Kadıköy"},

@@ -252,7 +252,14 @@ Veya Swagger UI (`/docs`) üzerinden `/api/requests` endpoint'ine POST:
 
 ## Ekran Görüntüleri
 
-> _Dashboard, API Docs ve WhatsApp akışı görselleri eklenecek._
+### Dashboard
+![Dashboard](screenshots/dashboard.png)
+
+### WhatsApp Mesajları
+![WhatsApp](screenshots/whatsapp.png)
+
+### Email Bildirimi
+![Email](screenshots/email.png)
 
 ## Lisans
 
