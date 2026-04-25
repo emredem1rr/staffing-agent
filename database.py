@@ -130,6 +130,8 @@ def init_db():
             thought_data TEXT,
             timestamp TEXT DEFAULT (datetime('now','localtime'))
         );
+
+        CREATE INDEX IF NOT EXISTS idx_staff_phone ON staff(phone);
     """)
     conn.commit()
     conn.close()

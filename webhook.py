@@ -2,10 +2,12 @@
 
 from typing import Optional
 
-from fastapi import APIRouter, Form
+from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import Response
+from twilio.request_validator import RequestValidator
 
 import database as db
+from config import MESSAGING_MODE, TWILIO_AUTH_TOKEN, WEBHOOK_BASE_URL
 from crew_agents import CoordinatorAgent
 
 router = APIRouter()
@@ -26,12 +28,22 @@ def normalize_tr(text: str) -> str:
 
 @router.post("/webhook/whatsapp")
 async def whatsapp_webhook(
+    request: Request,
     From: str = Form(...),
     Body: str = Form(...),
     MessageSid: str = Form(None),
     ProfileName: str = Form(None),
 ):
     """Twilio'dan gelen WhatsApp mesajlarını işle."""
+    # Twilio imza doğrulaması — sahte webhook isteklerini engeller
+    if MESSAGING_MODE == "whatsapp":
+        signature = request.headers.get("X-Twilio-Signature", "")
+        form_data = dict(await request.form())
+        url = f"{WEBHOOK_BASE_URL}/webhook/whatsapp"
+        validator = RequestValidator(TWILIO_AUTH_TOKEN)
+        if not validator.validate(url, form_data, signature):
+            raise HTTPException(status_code=403, detail="Geçersiz Twilio imzası")
+
     phone = From.replace("whatsapp:", "").strip()
     body_raw = Body.strip()
     body_norm = normalize_tr(body_raw)
