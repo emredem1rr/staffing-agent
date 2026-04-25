@@ -12,7 +12,7 @@ import sqlite3
 import json
 import os
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Optional, Any
 
 DB_PATH = os.getenv("DB_PATH", "staffing_agent.db")
 
@@ -197,7 +197,20 @@ def get_available_staff_by_role(role):
     return result
 
 
-def update_staff_status(staff_id, status):
+def get_staff_by_phone(phone: str) -> Optional[dict]:
+    """Telefon numarasına göre personel bul (son 10 hane eşleşmesi)."""
+    conn = get_db()
+    phone_suffix = phone.replace("+", "").replace(" ", "")[-10:]
+    row = conn.execute("""
+        SELECT s.*, sc.total_jobs, sc.completed_jobs, sc.cancelled_jobs, sc.no_show_count
+        FROM staff s LEFT JOIN staff_scores sc ON s.id = sc.staff_id
+        WHERE REPLACE(REPLACE(s.phone, '+', ''), ' ', '') LIKE ?
+    """, (f"%{phone_suffix}",)).fetchone()
+    conn.close()
+    return _staff_row(row) if row else None
+
+
+def update_staff_status(staff_id: int, status: str) -> None:
     conn = get_db()
     conn.execute("UPDATE staff SET status=? WHERE id=?", (status, staff_id))
     conn.commit()

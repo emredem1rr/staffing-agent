@@ -2,7 +2,6 @@
 
 import asyncio
 import httpx
-import time
 
 BASE = "http://localhost:8000"
 
@@ -64,7 +63,7 @@ async def run():
                 json={"request_id": rid, "response": response})
             if r2.status_code == 200:
                 print(f"      → {r2.json()['message']}")
-            time.sleep(0.3)
+            await asyncio.sleep(0.3)
 
         # 4. Final
         print("\n" + "═" * 60)

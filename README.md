@@ -1,129 +1,199 @@
 # Otonom Personel Yönetim Agent'ı
 
-> Yapay Zeka dersi bitirme projesi — Multi-Agent AI ile otel/etkinlik sektörü için otonom personel yönetim sistemi.
+> Yapay Zeka dersi bitirme projesi — Multi-Agent AI ile otel ve etkinlik sektörü için otonom personel yönetim sistemi.
+
+Müşteri mesajını okur, pozisyon/tarih/konum bilgilerini otomatik çıkarır, uygun personele WhatsApp daveti gönderir ve süreci uçtan uca yönetir.
 
 ## Özellikler
 
-- **Multi-Agent Mimarisi** — 4 uzman AI agent (Coordinator, Analyzer, Matcher, Communicator)
-- **Doğal Dil Analizi** — Müşteri mesajından pozisyon, tarih, saat, konum otomatik çıkarır (Ollama/llama3.1)
-- **WhatsApp Entegrasyonu** — Twilio ile personele gerçek WhatsApp daveti gönderir; EVET/HAYIR/İPTAL işler
-- **Gmail Entegrasyonu** — Gelen talep emaillerini otomatik okur ve işler; müşteriye durum emaili gönderir
-- **Takvim ve Çakışma Kontrolü** — Personelin başka etkinliğe atanıp atanmadığını kontrol eder
-- **Yedek Personel** — Red gelince sıradaki yedek otomatik davet edilir
-- **Uzun Süreli Hafıza** — Agent, müşteri ve personel kalıplarını hatırlar
-- **Hatırlatma Sistemi** — Etkinlikten 2 saat önce WhatsApp hatırlatması gönderir
-- **Dashboard** — Chart.js ile canlı istatistik ve agent aktivite logu
+- **Multi-Agent Pipeline** — Coordinator, Analyzer, Matcher, Communicator: her agent kendi uzmanlık alanında çalışır
+- **Doğal Dil Analizi** — "Yarın Maslak'ta 3 garson lazım" gibi mesajları JSON'a dönüştürür (Ollama/llama3.1)
+- **WhatsApp Entegrasyonu** — Twilio ile personele gerçek WhatsApp daveti gönderir; EVET/HAYIR/İPTAL yanıtlarını işler
+- **Gmail Entegrasyonu** — Gelen talep e-postalarını otomatik okur; müşteriye durum e-postası gönderir
+- **Takvim ve Çakışma Kontrolü** — Aynı personelin başka etkinliğe atanıp atanmadığını kontrol eder
+- **Yedek Personel Havuzu** — Red gelince sıradaki yedek otomatik davet edilir
+- **Uzun Süreli Hafıza** — Agent, müşteri kalıplarını ve personel tercihlerini hatırlar
+- **Hatırlatma Sistemi** — Etkinlikten 2 saat önce personele WhatsApp hatırlatması gönderir
+- **Canlı Dashboard** — Chart.js ile istatistik, agent aktivite logu ve performans sıralaması
 
 ## Teknolojiler
 
-| Katman | Teknoloji |
-|--------|-----------|
-| Backend | FastAPI + Uvicorn |
-| AI / LLM | Ollama (llama3.1:8b) — yerel, API ücreti yok |
-| Agent Çerçevesi | CrewAI pattern (özel implementasyon) |
-| Mesajlaşma | Twilio WhatsApp API |
-| Email | Gmail IMAP (okuma) + SMTP (gönderme) |
-| Veritabanı | SQLite (WAL modu) |
-| Veri Modeli | Pydantic v2 |
+| Katman | Teknoloji | Sürüm |
+|--------|-----------|-------|
+| Backend API | FastAPI + Uvicorn | 0.115 |
+| AI / LLM | Ollama (llama3.1:8b) — tamamen yerel | — |
+| Mesajlaşma | Twilio WhatsApp API | 9.3 |
+| E-posta | Gmail IMAP + SMTP | — |
+| Veritabanı | SQLite (WAL modu) | — |
+| Veri Modeli | Pydantic v2 | 2.9 |
+| Frontend | HTML + Chart.js | — |
 
 ## Mimari
 
+### Agent Pipeline
+
+```mermaid
+flowchart TD
+    A["Müşteri Talebi\nWhatsApp / E-posta / API"] --> B["🎯 Coordinator Agent\nPipeline yönetimi"]
+
+    B --> C["🔍 Analyzer Agent\nDoğal dil → JSON"]
+    C --> D{Eksik bilgi?}
+    D -->|Evet| E["📩 Müşteriye\ngeri bildirim"]
+    D -->|Hayır| F["🔗 Matcher Agent\nPersonel eşleştir"]
+
+    F --> G["💬 Communicator Agent\nDavet mesajı yaz"]
+    G --> H["📱 WhatsApp Davetleri\nPersonellere gönder"]
+
+    H --> I{Personel yanıtı}
+    I -->|EVET| J{Kontenjan dolu?}
+    I -->|HAYIR / İPTAL| K["🔄 Yedek Personel\nOtomatik davet"]
+    K --> H
+
+    J -->|Evet| L["🔴 Kontenjan dolu mesajı"]
+    J -->|Hayır| M["✅ Atama onaylandı\nTakvime eklendi"]
+
+    M --> N{Tüm pozisyonlar doldu?}
+    N -->|Hayır| O["⏳ Bekleniyor..."]
+    N -->|Evet| P["🎉 Müşteriye tamamlandı\nE-posta + WhatsApp"]
 ```
-Müşteri talebi (WhatsApp / Email / API)
-              │
-              ▼
-    ┌─────────────────┐
-    │   Coordinator   │  ← Tüm pipeline'ı yönetir
-    └────────┬────────┘
-             │
-     ┌───────┼────────┐
-     ▼       ▼        ▼
- Analyzer  Matcher  Communicator
-    │         │         │
-    │ JSON    │ Puan    │ Mesaj
-    │ çıkar   │ sırala  │ yaz
-     \        │        /
-      └───────┴───────┘
-              │
-              ▼
-    WhatsApp Davetleri
-              │
-    EVET / HAYIR / İPTAL
-              │
-              ▼
-    Kontenjan dolunca → Müşteriye email
+
+### Veritabanı Şeması
+
+```mermaid
+erDiagram
+    staff ||--o{ assignments : "davet edilir"
+    staff ||--|| staff_scores : "puanlanır"
+    staff ||--o{ schedule : "takvimi olur"
+    staff ||--o{ messages_log : "mesaj alır"
+    client_requests ||--o{ assignments : "içerir"
+    client_requests ||--o{ agent_activity : "loglanır"
+    client_requests ||--o{ messages_log : "mesaj gönderir"
+
+    staff {
+        int id PK
+        string name
+        string phone
+        string roles
+        string location
+        string status
+    }
+    staff_scores {
+        int staff_id PK
+        float reliability_score
+        float quality_score
+        float response_speed
+        int total_jobs
+    }
+    client_requests {
+        int id PK
+        string client_name
+        string original_message
+        string parsed_needs
+        string status
+    }
+    assignments {
+        int id PK
+        int request_id FK
+        int staff_id FK
+        string role
+        string status
+    }
 ```
 
 ## Dosya Yapısı
 
 ```
 staffing-agent/
-├── main.py            ← FastAPI endpoints
-├── crew_agents.py     ← 4 agent implementasyonu
-├── llm.py             ← Ollama bağlantı katmanı
-├── database.py        ← SQLite (6 tablo)
-├── models.py          ← Pydantic modeller
-├── messaging.py       ← Twilio WhatsApp gönderim
-├── email_checker.py   ← Gmail IMAP okuyucu
-├── email_notifier.py  ← Gmail SMTP göndericisi
-├── webhook.py         ← Twilio webhook handler
-├── reminder.py        ← Otomatik hatırlatma sistemi
-├── dashboard.html     ← React + Chart.js dashboard
-├── seed_data.py       ← 25 örnek personel verisi
-├── test_scenario.py   ← Uçtan uca test
-├── .env               ← Gerçek anahtarlar (gitignore'da)
-├── .env.example       ← Örnek yapı (GitHub'a gider)
-└── requirements.txt   ← Bağımlılıklar
+├── main.py              ← FastAPI endpoints + lifespan
+├── crew_agents.py       ← 4 agent implementasyonu (Coordinator, Analyzer, Matcher, Communicator)
+├── llm.py               ← Ollama bağlantı katmanı + fallback mod
+├── database.py          ← SQLite CRUD (6 tablo)
+├── models.py            ← Pydantic v2 modeller
+├── messaging.py         ← Twilio WhatsApp gönderimi (console/whatsapp modu)
+├── email_checker.py     ← Gmail IMAP talep okuyucu
+├── email_notifier.py    ← Gmail SMTP bildirim gönderici
+├── webhook.py           ← Twilio webhook handler
+├── reminder.py          ← Otomatik hatırlatma sistemi
+├── parser_utils.py      ← Tarih/saat/JSON normalize yardımcıları
+├── dashboard.html       ← React + Chart.js dashboard
+├── seed_data.py         ← 25 örnek personel verisi
+├── test_scenario.py     ← Uçtan uca senaryo testi
+├── .env                 ← Gerçek anahtarlar (gitignore'da)
+├── .env.example         ← Örnek yapı (GitHub'a gider)
+└── requirements.txt     ← Python bağımlılıkları
 ```
 
 ## Kurulum
 
-### 1. Ollama (yerel LLM)
+### Gereksinimler
+
+- Python 3.10+
+- [Ollama](https://ollama.com) (yerel LLM)
+- Twilio hesabı (WhatsApp için)
+- Gmail hesabı + Uygulama Şifresi (e-posta için)
+
+### 1. Ollama Kurulumu
 
 ```bash
-# Ollama'yı yükle: https://ollama.com
+# Ollama'yı kur: https://ollama.com
 ollama pull llama3.1:8b
 ollama serve
 ```
 
-### 2. Proje
+### 2. Proje Kurulumu
 
 ```bash
-git clone <repo-url>
+git clone https://github.com/emredem1rr/staffing-agent.git
 cd staffing-agent
 
+# Sanal ortam (Windows)
 python -m venv venv
-# Windows:
 venv\Scripts\activate
-# Mac/Linux:
+
+# Sanal ortam (Mac/Linux)
+python -m venv venv
 source venv/bin/activate
 
 pip install -r requirements.txt
 ```
 
-### 3. Ortam değişkenleri
+### 3. Ortam Değişkenleri
 
 ```bash
-cp .env.example .env
-# .env dosyasını düzenle — Twilio ve Gmail bilgilerini gir
+copy .env.example .env   # Windows
+cp .env.example .env     # Mac/Linux
 ```
 
-`.env` için gereken anahtarlar:
-- **Twilio**: [console.twilio.com](https://console.twilio.com) → Account SID + Auth Token
-- **Gmail**: Google Hesabı → Güvenlik → 2 Adımlı Doğrulama → Uygulama Şifreleri → 16 haneli şifre
+`.env` dosyasını düzenle:
 
-### 4. Veri yükle ve başlat
+| Değişken | Nereden Alınır |
+|----------|----------------|
+| `TWILIO_ACCOUNT_SID` | [console.twilio.com](https://console.twilio.com) → Account Info |
+| `TWILIO_AUTH_TOKEN` | Aynı sayfa |
+| `GMAIL_APP_PASSWORD` | Google Hesabı → Güvenlik → 2 Adımlı Doğrulama → Uygulama Şifreleri |
+
+> **Test modu:** `.env` dosyasında `MESSAGING_MODE=console` ayarla — WhatsApp yerine terminale yazar.
+
+### 4. Başlatma
 
 ```bash
-python seed_data.py   # 25 örnek personel ekler
+# Örnek veri yükle (isteğe bağlı)
+python seed_data.py
 
-# WhatsApp webhook için (Twilio'ya URL vermek gerekiyorsa):
-ngrok http 8000       # Terminal 1
-
-python main.py        # Terminal 2
+# Sunucu başlat
+python main.py
 ```
 
-### 5. Bağlantılar
+WhatsApp webhook için (Twilio sandbox test):
+```bash
+# Terminal 1
+ngrok http 8000
+
+# Twilio Console → WhatsApp Sandbox → "When a message comes in" alanına ngrok URL'yi yapıştır:
+# https://xxxx.ngrok.io/webhook/whatsapp
+```
+
+## Bağlantılar
 
 | Sayfa | URL |
 |-------|-----|
@@ -131,45 +201,59 @@ python main.py        # Terminal 2
 | API Docs (Swagger) | http://localhost:8000/docs |
 | WhatsApp Webhook | http://localhost:8000/webhook/whatsapp |
 
+## API Endpoints
+
+### Personel
+
+| Method | Endpoint | Açıklama |
+|--------|----------|----------|
+| `POST` | `/api/staff` | Yeni personel ekle |
+| `GET` | `/api/staff` | Tüm personel listesi |
+| `GET` | `/api/staff/{id}` | Personel detayı |
+| `GET` | `/api/staff/{id}/schedule` | Personel takvimi |
+| `POST` | `/api/staff/{id}/complete-job` | İşi tamamlandı işaretle |
+| `POST` | `/api/staff/{id}/no-show` | Gelmedi işaretle |
+
+### Talepler
+
+| Method | Endpoint | Açıklama |
+|--------|----------|----------|
+| `POST` | `/api/requests` | Yeni talep oluştur (pipeline başlar) |
+| `GET` | `/api/requests` | Tüm talepler |
+| `GET` | `/api/requests/{id}` | Talep detayı + atamalar + log |
+| `GET` | `/api/requests/{id}/assignments` | Talep atamaları |
+| `POST` | `/api/respond/{staff_id}` | Personel yanıtı (kabul/red) |
+
+### Agent & Dashboard
+
+| Method | Endpoint | Açıklama |
+|--------|----------|----------|
+| `GET` | `/api/activity` | Canlı agent aktivite logu |
+| `GET` | `/api/memory` | Agent uzun süreli hafızası |
+| `GET` | `/api/dashboard` | Özet istatistikler |
+| `POST` | `/api/check-email` | Gmail'i anında kontrol et |
+
 ## Hızlı Test
 
 ```bash
 python test_scenario.py
 ```
 
-Veya Swagger UI'dan `/api/requests` endpoint'ine POST:
+Veya Swagger UI (`/docs`) üzerinden `/api/requests` endpoint'ine POST:
 
 ```json
 {
-  "client_name": "Sheraton İstanbul",
-  "message": "Yarın akşam 18:00 Maslak'ta 3 garson ve 2 komi lazım",
-  "contact_email": "test@sheraton.com",
+  "client_name": "Sheraton İstanbul Maslak",
+  "message": "Yarın akşam 18:00 Maslak'ta 5 garson ve 3 komi lazım",
+  "contact_email": "events@sheraton.com",
   "priority": "high"
 }
 ```
 
-## Mesajlaşma Modu
-
-`.env` dosyasında `MESSAGING_MODE` ayarı:
-
-| Değer | Davranış |
-|-------|----------|
-| `console` | Mesajlar terminale yazılır (geliştirme/demo) |
-| `whatsapp` | Twilio ile gerçek WhatsApp gönderilir |
-
 ## Ekran Görüntüleri
 
-> Dashboard, API Docs ve WhatsApp akışı görselleri buraya eklenecek.
+> _Dashboard, API Docs ve WhatsApp akışı görselleri eklenecek._
 
-## Veritabanı Şeması
+## Lisans
 
-```
-staff              → Personel bilgileri
-staff_scores       → Performans puanları (güvenilirlik, kalite, hız)
-client_requests    → Müşteri talepleri
-assignments        → Personel-talep atamaları
-schedule           → Personel takvimi (çakışma kontrolü için)
-agent_memory       → Agent uzun süreli hafızası
-agent_activity     → Canlı agent aktivite logu
-messages_log       → Gönderilen tüm mesajlar
-```
+MIT License — Eğitim amaçlı kullanım için serbesttir.

@@ -68,6 +68,7 @@ async def check_gmail_for_requests():
         print("⚠️  Gmail ayarları eksik (config.py)")
         return []
 
+    mail = None
     try:
         mail = imaplib.IMAP4_SSL("imap.gmail.com")
         mail.login(GMAIL_ADDRESS, GMAIL_APP_PASSWORD)
@@ -79,34 +80,21 @@ async def check_gmail_for_requests():
         # (IMAP SUBJECT araması Türkçe karakterlerde sorun çıkarabilir)
         status, messages = mail.search(None, "UNSEEN")
         if status != "OK" or not messages[0]:
-            mail.logout()
             return []
 
         msg_ids = messages[0].split()
         print(f"\n📧 {len(msg_ids)} okunmamış mail kontrol ediliyor...")
 
-        # Konu eşleşme kalıpları — büyük/küçük harf, noktalı/noktasız, yazım hataları
         subject_patterns = [
-            "personel talebi",
-            "personel taleb",
-            "personel talebı",
-            "personel talebİ",
-            "personel talep",
-            "personel ihtiyaci",
-            "personel ihtiyacı",
-            "personel gerekiyor",
-            "personel lazim",
-            "personel lazım",
-            "eleman talebi",
-            "eleman talep",
-            "eleman lazim",
-            "eleman lazım",
-            "eleman ihtiyaci",
-            "eleman ihtiyacı",
+            "personel talebi", "personel taleb", "personel talep",
+            "personel ihtiyaci", "personel ihtiyacı", "personel gerekiyor",
+            "personel lazim", "personel lazım",
+            "eleman talebi", "eleman talep", "eleman lazim", "eleman lazım",
+            "eleman ihtiyaci", "eleman ihtiyacı",
         ]
 
-        def normalize_turkish(text):
-            """Türkçe karakterleri ASCII'ye çevir + küçük harf."""
+        def normalize_turkish(text: str) -> str:
+            """Türkçe karakterleri ASCII'ye çevir ve küçük harfe dönüştür."""
             replacements = {
                 "ı": "i", "İ": "i", "ğ": "g", "Ğ": "g",
                 "ü": "u", "Ü": "u", "ş": "s", "Ş": "s",
@@ -118,7 +106,6 @@ async def check_gmail_for_requests():
             return text
 
         for msg_id in msg_ids[-10:]:
-            # Önce sadece header oku (maili okundu işaretleme)
             status_h, data_h = mail.fetch(msg_id, "(BODY.PEEK[HEADER.FIELDS (SUBJECT FROM)])")
             if status_h != "OK":
                 continue
@@ -127,14 +114,10 @@ async def check_gmail_for_requests():
             msg_peek = email.message_from_string(header_raw)
             subject_raw = decode_mime_header(msg_peek.get("Subject", ""))
 
-            # Normalize et ve kalıpları kontrol et
             subject_norm = normalize_turkish(subject_raw)
-            matched = any(normalize_turkish(p) in subject_norm for p in subject_patterns)
-
-            if not matched:
+            if not any(normalize_turkish(p) in subject_norm for p in subject_patterns):
                 continue
 
-            # Filtreden geçti — tam maili oku
             status2, data2 = mail.fetch(msg_id, "(RFC822)")
             if status2 != "OK":
                 continue
@@ -144,10 +127,7 @@ async def check_gmail_for_requests():
             sender = decode_mime_header(msg["From"])
             body = get_email_body(msg)
 
-            # Gönderen adını çıkar
-            sender_name = sender
-            if "<" in sender:
-                sender_name = sender.split("<")[0].strip().strip('"')
+            sender_name = sender.split("<")[0].strip().strip('"') if "<" in sender else sender
             sender_email = ""
             if "<" in sender and ">" in sender:
                 sender_email = sender.split("<")[1].split(">")[0]
@@ -157,21 +137,17 @@ async def check_gmail_for_requests():
             print(f"  Konu: {subject}")
             print(f"  Mesaj: {body[:100]}...")
 
-            # Mesajı oluştur — konu + gövde birleşik
             request_message = f"{subject}. {body}" if body else subject
 
-            # Önceliği mesaj içeriğinden otomatik algıla
             msg_lower = request_message.lower()
             if any(w in msg_lower for w in ["acil", "urgent", "hemen", "şimdi", "simdi"]):
                 priority = "urgent"
-            elif any(w in msg_lower for w in ["bugün", "bugun", "today", "bu akşam", "bu aksam"]):
-                priority = "high"
-            elif any(w in msg_lower for w in ["yarın", "yarin", "tomorrow"]):
+            elif any(w in msg_lower for w in ["bugün", "bugun", "today", "bu akşam", "bu aksam",
+                                               "yarın", "yarin", "tomorrow"]):
                 priority = "high"
             else:
                 priority = "normal"
 
-            # Sisteme talep oluştur
             from crew_agents import CoordinatorAgent
 
             req_id = db.create_request(
@@ -182,9 +158,8 @@ async def check_gmail_for_requests():
             )
 
             db.log_activity(req_id, "email_checker", "email_received",
-                f"Email'den talep oluşturuldu: {sender_name} ({sender_email})")
+                            f"Email'den talep: {sender_name} ({sender_email})")
 
-            # Agent'ı çalıştır
             coordinator = CoordinatorAgent()
             result = await coordinator.process_request(req_id)
 
@@ -196,12 +171,9 @@ async def check_gmail_for_requests():
                 "result": result,
             })
 
-            # Maili okundu olarak işaretle
             mail.store(msg_id, "+FLAGS", "\\Seen")
-
             print(f"  ✅ Talep #{req_id} oluşturuldu ve agent işledi")
 
-        mail.logout()
         return new_requests
 
     except imaplib.IMAP4.error as e:
@@ -211,6 +183,12 @@ async def check_gmail_for_requests():
     except Exception as e:
         print(f"⚠️  Email kontrol hatası: {e}")
         return []
+    finally:
+        if mail:
+            try:
+                mail.logout()
+            except Exception:
+                pass
 
 
 async def email_check_loop(interval_seconds=60):
